@@ -58,6 +58,7 @@ export class AddTaskBarParserService {
       allProjects,
       undefined,
       'replace',
+      undefined, // Don't fetch URL metadata during preview - only when task is created
     );
 
     // Create current parse result data structure

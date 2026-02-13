@@ -8,6 +8,7 @@ import { isImageUrlSimple } from '../../util/is-image-url';
 import { TaskAttachment } from './task-attachment/task-attachment.model';
 import { nanoid } from 'nanoid';
 import type { Chrono, ParsingContext, ParsingResult } from 'chrono-node';
+import { UrlMetadataService } from '../../util/url-metadata.service';
 type ProjectChanges = {
   title?: string;
   projectId?: string;
@@ -113,6 +114,7 @@ export const shortSyntax = async (
   allProjects?: Project[],
   now = new Date(),
   mode: 'combine' | 'replace' = 'combine',
+  urlMetadataService?: UrlMetadataService,
 ): Promise<
   | {
       taskChanges: Partial<Task>;
@@ -173,12 +175,14 @@ export const shortSyntax = async (
   }
 
   // Process URLs when enabled in config
+  // urlMetadataService is optional - only needed for fetching page titles in keep-title mode
   const urlChanges = await parseUrlAttachments(
     {
       ...task,
       title: taskChanges.title || task.title,
     },
     config.urlBehavior || 'extract',
+    urlMetadataService,
   );
   if (urlChanges.hadUrls) {
     // Return only new attachments - effects will merge with existing
@@ -491,6 +495,7 @@ const parseTimeSpentChanges = (task: Partial<TaskCopy>): Partial<Task> => {
 const parseUrlAttachments = async (
   task: Partial<TaskCopy>,
   urlBehavior: 'extract' | 'keep-url' | 'keep-title',
+  urlMetadataService?: UrlMetadataService,
 ): Promise<{
   attachments: TaskAttachment[];
   title: string;
@@ -574,7 +579,7 @@ const parseUrlAttachments = async (
       icon = 'bookmark';
     }
 
-    // Extract basename for title
+    // Extract basename for title (will be replaced by metadata in keep-title mode)
     const title = _baseNameForUrl(path);
 
     return {
@@ -586,7 +591,29 @@ const parseUrlAttachments = async (
     };
   });
 
-  // Clean URLs from title - use ALL detected URLs (before deduplication)
+  // Fetch metadata for attachments in keep-title mode
+  if (urlBehavior === 'keep-title' && urlMetadataService) {
+    const attachmentsWithMetadata = await Promise.all(
+      attachments.map(async (attachment, index) => {
+        if (attachment.path && attachment.type !== 'FILE') {
+          // Fetch page title with fallback to basename
+          const pageTitle = await urlMetadataService.fetchTitle(
+            attachment.path,
+            attachment.title || 'Link',
+          );
+
+          // Return new attachment object with updated title
+          return { ...attachment, title: pageTitle };
+        }
+        return attachment;
+      }),
+    );
+    // Replace attachments array with metadata-enriched version
+    attachments.length = 0;
+    attachments.push(...attachmentsWithMetadata);
+  }
+
+  // Clean URLs from title based on urlBehavior mode
   let cleanedTitle = task.title;
 
   if (urlBehavior === 'extract') {
