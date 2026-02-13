@@ -31,16 +31,15 @@ export const SHORT_SYNTAX_FORM_CFG: ConfigFormSection<ShortSyntaxConfig> = {
       key: 'urlBehavior',
       type: 'select',
       templateOptions: {
-        label: 'URL Behavior',
+        label: T.GCF.SHORT_SYNTAX.URL_BEHAVIOR,
         required: true,
-        description:
-          'Note: "Replace with page title" may not work for all external URLs due to browser security restrictions (CORS). It will fall back to the final part of the URL.',
+        description: T.GCF.SHORT_SYNTAX.URL_BEHAVIOR_DESC,
         options: [
-          { value: 'extract', label: 'Extract to attachments (remove from title)' },
-          { value: 'keep-url', label: 'Keep URL in title (clickable)' },
+          { value: 'extract', label: T.GCF.SHORT_SYNTAX.URL_BEHAVIOR_EXTRACT },
+          { value: 'keep-url', label: T.GCF.SHORT_SYNTAX.URL_BEHAVIOR_KEEP_URL },
           {
             value: 'keep-title',
-            label: 'Replace with page title (clickable)',
+            label: T.GCF.SHORT_SYNTAX.URL_BEHAVIOR_KEEP_TITLE,
           },
         ],
       },
