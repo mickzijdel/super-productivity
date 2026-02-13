@@ -39,6 +39,7 @@ const fetchUrlMetadata = async (
 
     return await new Promise<UrlMetadataResult>((resolve) => {
       const timeout = setTimeout(() => {
+        req.destroy();
         resolve({ title: null, error: 'Timeout' });
       }, 5000);
 
@@ -138,8 +139,6 @@ const fetchUrlMetadata = async (
             resolve({ title: null, error: err.message });
           }
         });
-
-        res.on('close', () => {});
       });
 
       req.on('error', (err) => {
