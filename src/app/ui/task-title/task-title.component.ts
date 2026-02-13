@@ -1,22 +1,29 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   ElementRef,
   HostListener,
+  inject,
   Input,
   OnDestroy,
   output,
   signal,
   viewChild,
 } from '@angular/core';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { T } from 'src/app/t.const';
 import { TranslateModule } from '@ngx-translate/core';
 import { IS_ANDROID_WEB_VIEW } from '../../util/is-android-web-view';
 import { Log } from '../../core/log';
 
+// URL regex matching URLs with protocol (http, https, file) or www prefix
+const URL_REGEX = /(?:(?:https?|file):\/\/\S+|www\.\S+?)(?=\s|$)/gi;
+
 /**
  * Inline-editable text field for task titles.
  * Click to edit, Enter/Escape to save. Removes newlines and short syntax.
+ * Renders URLs as clickable links when not editing.
  */
 @Component({
   selector: 'task-title',
@@ -31,6 +38,7 @@ import { Log } from '../../core/log';
 })
 export class TaskTitleComponent implements OnDestroy {
   T: typeof T = T;
+  private _sanitizer = inject(DomSanitizer);
 
   // Reset value only if user is not currently editing (prevents overwriting edits during sync)
   @Input() set resetToLastExternalValueTrigger(value: unknown) {
@@ -64,6 +72,54 @@ export class TaskTitleComponent implements OnDestroy {
   readonly tmpValue = signal(''); // Current editing value
   readonly textarea = viewChild<ElementRef<HTMLTextAreaElement>>('textAreaElement');
 
+  /**
+   * Memoized computed signal that converts URLs to clickable links.
+   * Only recalculates when tmpValue changes, providing optimal performance.
+   * Returns SafeHtml for use with [innerHTML] in the template.
+   *
+   * Supports one format:
+   * - Direct URLs (keep-url mode): https://example.com
+   */
+  readonly displayHtml = computed<SafeHtml>(() => {
+    const text = this.tmpValue();
+    if (!text) {
+      return '';
+    }
+
+    let htmlWithLinks = text;
+
+    // Then, handle regular URLs (keep-url mode)
+    let hasUrls = false;
+    URL_REGEX.lastIndex = 0;
+    hasUrls = URL_REGEX.test(htmlWithLinks);
+    if (hasUrls) {
+      URL_REGEX.lastIndex = 0;
+      htmlWithLinks = htmlWithLinks.replace(URL_REGEX, (url) => {
+        // Clean trailing punctuation
+        const cleanUrl = url.replace(/[.,;!?]+$/, '');
+        // Handle different URL formats
+        let href = cleanUrl;
+        if (cleanUrl.match(/^(?:https?|file):\/\//)) {
+          href = cleanUrl;
+        } else if (cleanUrl.startsWith('//')) {
+          href = `https:${cleanUrl}`;
+        } else {
+          href = `http://${cleanUrl}`;
+        }
+        // Return clickable link (mousedown handler prevents edit mode for A tags)
+        return `<a href="${href}" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>`;
+      });
+    }
+
+    // If no links, return plain text
+    if (!hasUrls) {
+      return text;
+    }
+
+    // Use bypassSecurityTrustHtml since we constructed the HTML safely
+    return this._sanitizer.bypassSecurityTrustHtml(htmlWithLinks);
+  });
+
   readonly valueEdited = output<{
     newVal: string;
     wasChanged: boolean;
@@ -76,12 +132,13 @@ export class TaskTitleComponent implements OnDestroy {
 
   constructor() {}
 
-  // Click anywhere to enter edit mode
+  // Click anywhere to enter edit mode (except links)
   @HostListener('mousedown', ['$event'])
   onMouseDown(event: MouseEvent): void {
     event.stopPropagation();
     const target = event.target as HTMLElement | null;
-    if (event.button !== 0 || target?.tagName === 'TEXTAREA') {
+    // Don't enter edit mode if clicking a link or textarea
+    if (event.button !== 0 || target?.tagName === 'TEXTAREA' || target?.tagName === 'A') {
       return;
     }
     this.focusInput();
