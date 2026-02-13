@@ -20,6 +20,9 @@ import { Log } from '../../core/log';
 // URL regex matching URLs with protocol (http, https, file) or www prefix
 const URL_REGEX = /(?:(?:https?|file):\/\/\S+|www\.\S+?)(?=\s|$)/gi;
 
+// Markdown link regex for keep-title mode: [title](url)
+const MARKDOWN_LINK_REGEX = /\[([^\]]+)\]\(([^)]+)\)/g;
+
 /**
  * Inline-editable text field for task titles.
  * Click to edit, Enter/Escape to save. Removes newlines and short syntax.
@@ -73,12 +76,13 @@ export class TaskTitleComponent implements OnDestroy {
   readonly textarea = viewChild<ElementRef<HTMLTextAreaElement>>('textAreaElement');
 
   /**
-   * Memoized computed signal that converts URLs to clickable links.
+   * Memoized computed signal that converts URLs and Markdown links to clickable links.
    * Only recalculates when tmpValue changes, providing optimal performance.
    * Returns SafeHtml for use with [innerHTML] in the template.
    *
-   * Supports one format:
+   * Supports two formats:
    * - Direct URLs (keep-url mode): https://example.com
+   * - Markdown links (keep-title mode): [Page Title](https://example.com)
    */
   readonly displayHtml = computed<SafeHtml>(() => {
     const text = this.tmpValue();
@@ -88,31 +92,59 @@ export class TaskTitleComponent implements OnDestroy {
 
     let htmlWithLinks = text;
 
-    // Then, handle regular URLs (keep-url mode)
-    let hasUrls = false;
-    URL_REGEX.lastIndex = 0;
-    hasUrls = URL_REGEX.test(htmlWithLinks);
-    if (hasUrls) {
-      URL_REGEX.lastIndex = 0;
-      htmlWithLinks = htmlWithLinks.replace(URL_REGEX, (url) => {
-        // Clean trailing punctuation
-        const cleanUrl = url.replace(/[.,;!?]+$/, '');
-        // Handle different URL formats
-        let href = cleanUrl;
-        if (cleanUrl.match(/^(?:https?|file):\/\//)) {
-          href = cleanUrl;
-        } else if (cleanUrl.startsWith('//')) {
-          href = `https:${cleanUrl}`;
+    // First, handle Markdown links (keep-title mode): [title](url)
+    MARKDOWN_LINK_REGEX.lastIndex = 0;
+    const hasMarkdown = MARKDOWN_LINK_REGEX.test(text);
+    if (hasMarkdown) {
+      MARKDOWN_LINK_REGEX.lastIndex = 0;
+      htmlWithLinks = htmlWithLinks.replace(MARKDOWN_LINK_REGEX, (_match, title, url) => {
+        // Handle different URL formats:
+        // - Full URL with protocol: https://example.com
+        // - Protocol-relative URL: //example.com
+        // - No protocol: example.com
+        let href = url;
+        if (url.match(/^(?:https?|file):\/\//)) {
+          // Already has protocol, use as-is
+          href = url;
+        } else if (url.startsWith('//')) {
+          // Protocol-relative URL, add https:
+          href = `https:${url}`;
         } else {
-          href = `http://${cleanUrl}`;
+          // No protocol at all, add http://
+          href = `http://${url}`;
         }
-        // Return clickable link (mousedown handler prevents edit mode for A tags)
-        return `<a href="${href}" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>`;
+        return `<a href="${href}" target="_blank" rel="noopener noreferrer">${title}</a>`;
       });
     }
 
-    // If no links, return plain text
-    if (!hasUrls) {
+    // Then, handle regular URLs (keep-url mode)
+    // Only process if we didn't already handle Markdown links (to avoid double-processing)
+    let hasUrls = false;
+    if (!hasMarkdown) {
+      URL_REGEX.lastIndex = 0;
+      hasUrls = URL_REGEX.test(htmlWithLinks);
+      if (hasUrls) {
+        URL_REGEX.lastIndex = 0;
+        htmlWithLinks = htmlWithLinks.replace(URL_REGEX, (url) => {
+          // Clean trailing punctuation
+          const cleanUrl = url.replace(/[.,;!?]+$/, '');
+          // Handle different URL formats (same logic as Markdown links)
+          let href = cleanUrl;
+          if (cleanUrl.match(/^(?:https?|file):\/\//)) {
+            href = cleanUrl;
+          } else if (cleanUrl.startsWith('//')) {
+            href = `https:${cleanUrl}`;
+          } else {
+            href = `http://${cleanUrl}`;
+          }
+          // Return clickable link (mousedown handler prevents edit mode for A tags)
+          return `<a href="${href}" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>`;
+        });
+      }
+    }
+
+    // If no links or markdown, return plain text
+    if (!hasMarkdown && !hasUrls) {
       return text;
     }
 

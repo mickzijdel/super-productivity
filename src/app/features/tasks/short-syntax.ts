@@ -505,6 +505,17 @@ const parseUrlAttachments = async (
   if (!urlMatches || urlMatches.length === 0) {
     return { attachments: [], title: task.title, hadUrls: false };
   }
+
+  // Filter out URLs that are already inside Markdown links [title](url)
+  // This prevents double-processing when shortSyntax runs multiple times
+  const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+  const urlsInMarkdownLinks = new Set<string>();
+  let match: RegExpExecArray | null;
+  while ((match = markdownLinkRegex.exec(task.title)) !== null) {
+    urlsInMarkdownLinks.add(match[2]); // match[2] is the URL inside (url)
+  }
+
+  // Only process URLs that are NOT already in Markdown links
   const urlsToProcess = urlMatches.filter((url) => {
     let trimmedUrl = url.trim().replace(/[.,;!?]+$/, '');
 
