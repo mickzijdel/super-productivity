@@ -16,6 +16,7 @@ export class UrlMetadataService {
   private _cache = new Map<string, string>();
   private _pendingRequests = new Map<string, Promise<string>>();
   private _isElectron = IS_ELECTRON;
+  private readonly _maxCacheSize = 100;
 
   /**
    * Fetches the page title for a given URL.
@@ -69,12 +70,12 @@ export class UrlMetadataService {
 
         const finalTitle = title || fallbackTitle;
 
-        // Cache result
-        this._cache.set(url, finalTitle);
+        // Cache result with eviction policy
+        this._addToCache(url, finalTitle);
         return finalTitle;
       } catch (_error) {
         // Timeout or other error - use fallback
-        this._cache.set(url, fallbackTitle);
+        this._addToCache(url, fallbackTitle);
         return fallbackTitle;
       } finally {
         // Clean up pending request
@@ -115,6 +116,20 @@ export class UrlMetadataService {
     }
 
     return null;
+  }
+  /**
+   * Adds entry to cache with LRU eviction policy.
+   * When cache exceeds max size, removes oldest entries.
+   */
+  private _addToCache(url: string, title: string): void {
+    // If cache is at capacity, remove oldest entry (first entry in Map)
+    if (this._cache.size >= this._maxCacheSize) {
+      const firstKey = this._cache.keys().next().value;
+      if (firstKey) {
+        this._cache.delete(firstKey);
+      }
+    }
+    this._cache.set(url, title);
   }
 
   /**
