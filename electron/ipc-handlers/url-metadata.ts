@@ -161,6 +161,19 @@ const fetchUrlMetadata = async (
 
 export const initUrlMetadataIpc = (): void => {
   ipcMain.handle(IPC.FETCH_URL_METADATA, async (_ev, url: string) => {
+    // Validate URL scheme to prevent internal protocol access (Fix #13)
+    try {
+      const parsedUrl = new URL(url);
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        return {
+          title: null,
+          error: 'Invalid URL scheme. Only http and https are allowed.',
+        };
+      }
+    } catch (e) {
+      return { title: null, error: 'Invalid URL format' };
+    }
+
     return await fetchUrlMetadata(url);
   });
 };
