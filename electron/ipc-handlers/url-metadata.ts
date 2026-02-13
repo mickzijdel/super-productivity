@@ -6,7 +6,7 @@ import * as zlib from 'zlib';
 import { Readable } from 'stream';
 
 interface UrlMetadataResult {
-  title: string | null;
+  html: string | null;
   error?: string;
 }
 
@@ -19,12 +19,12 @@ const fetchUrlMetadata = async (
   try {
     // Prevent infinite redirect loops
     if (redirectCount > MAX_REDIRECTS) {
-      return { title: null, error: 'Too many redirects' };
+      return { html: null, error: 'Too many redirects' };
     }
 
     // Skip file:// URLs
     if (url.startsWith('file://')) {
-      return { title: null };
+      return { html: null };
     }
 
     // Normalize protocol-relative URLs (//example.com) to https://
@@ -40,7 +40,7 @@ const fetchUrlMetadata = async (
     return await new Promise<UrlMetadataResult>((resolve) => {
       const timeout = setTimeout(() => {
         req.destroy();
-        resolve({ title: null, error: 'Timeout' });
+        resolve({ html: null, error: 'Timeout' });
       }, 5000);
 
       // Add User-Agent and Accept headers to look like a real browser
@@ -63,7 +63,7 @@ const fetchUrlMetadata = async (
         // Handle rate limiting / bot protection
         if (res.statusCode === 429 || res.statusCode === 403) {
           clearTimeout(timeout);
-          resolve({ title: null, error: 'Rate limited or blocked' });
+          resolve({ html: null, error: 'Rate limited or blocked' });
           return;
         }
 
@@ -87,7 +87,7 @@ const fetchUrlMetadata = async (
         // Only accept 2xx responses
         if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
           clearTimeout(timeout);
-          resolve({ title: null, error: `HTTP ${res.statusCode}` });
+          resolve({ html: null, error: `HTTP ${res.statusCode}` });
           return;
         }
 
@@ -109,15 +109,14 @@ const fetchUrlMetadata = async (
 
         stream.on('data', (chunk: string) => {
           html += chunk;
-          // Stop early if we've found the title (optimization)
-          if (html.includes('</title>') || html.length > 50000) {
+          // Stop early if we've found the title or head section (optimization)
+          // We need enough HTML to extract title or og:title meta tags
+          if (html.includes('</head>') || html.length > 50000) {
             if (!resolved) {
               resolved = true;
               clearTimeout(timeout);
-
-              const title = extractTitle(html);
               stream.destroy();
-              resolve({ title });
+              resolve({ html });
             }
           }
         });
@@ -126,8 +125,7 @@ const fetchUrlMetadata = async (
           if (!resolved) {
             resolved = true;
             clearTimeout(timeout);
-            const title = extractTitle(html);
-            resolve({ title });
+            resolve({ html });
           }
         });
 
@@ -136,7 +134,7 @@ const fetchUrlMetadata = async (
             resolved = true;
             clearTimeout(timeout);
             console.log('[Electron] Stream error:', err.message);
-            resolve({ title: null, error: err.message });
+            resolve({ html: null, error: err.message });
           }
         });
       });
@@ -144,18 +142,18 @@ const fetchUrlMetadata = async (
       req.on('error', (err) => {
         clearTimeout(timeout);
         console.log('[Electron] Request error:', err.message);
-        resolve({ title: null, error: err.message });
+        resolve({ html: null, error: err.message });
       });
 
       req.setTimeout(5000, () => {
         req.destroy();
         clearTimeout(timeout);
-        resolve({ title: null, error: 'Request timeout' });
+        resolve({ html: null, error: 'Request timeout' });
       });
     });
   } catch (error) {
     console.log('[Electron] Exception in fetchUrlMetadata:', (error as Error).message);
-    return { title: null, error: (error as Error).message };
+    return { html: null, error: (error as Error).message };
   }
 };
 
@@ -166,59 +164,14 @@ export const initUrlMetadataIpc = (): void => {
       const parsedUrl = new URL(url);
       if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
         return {
-          title: null,
+          html: null,
           error: 'Invalid URL scheme. Only http and https are allowed.',
         };
       }
     } catch (e) {
-      return { title: null, error: 'Invalid URL format' };
+      return { html: null, error: 'Invalid URL format' };
     }
 
     return await fetchUrlMetadata(url);
   });
-};
-
-const extractTitle = (html: string): string | null => {
-  // Try <title> tag
-  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-  if (titleMatch && titleMatch[1]) {
-    return decodeHtmlEntities(titleMatch[1].trim());
-  }
-
-  // Try OpenGraph og:title
-  const ogTitleMatch = html.match(
-    /<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i,
-  );
-  if (ogTitleMatch && ogTitleMatch[1]) {
-    return decodeHtmlEntities(ogTitleMatch[1].trim());
-  }
-
-  // Try OpenGraph og:title (reversed attribute order)
-  const ogTitleMatch2 = html.match(
-    /<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i,
-  );
-  if (ogTitleMatch2 && ogTitleMatch2[1]) {
-    return decodeHtmlEntities(ogTitleMatch2[1].trim());
-  }
-
-  return null;
-};
-
-const decodeHtmlEntities = (text: string): string => {
-  const entities: Record<string, string> = {
-    // eslint-disable-next-line @typescript-eslint/naming-convention
-    '&amp;': '&',
-    // eslint-disable-next-line @typescript-eslint/naming-convention
-    '&lt;': '<',
-    // eslint-disable-next-line @typescript-eslint/naming-convention
-    '&gt;': '>',
-    // eslint-disable-next-line @typescript-eslint/naming-convention
-    '&quot;': '"',
-    // eslint-disable-next-line @typescript-eslint/naming-convention
-    '&#39;': "'",
-    // eslint-disable-next-line @typescript-eslint/naming-convention
-    '&apos;': "'",
-  };
-
-  return text.replace(/&[^;]+;/g, (entity) => entities[entity] || entity);
 };

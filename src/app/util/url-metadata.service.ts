@@ -50,7 +50,8 @@ export class UrlMetadataService {
         // Use Electron main process if available (avoids CORS)
         if (this._isElectron && (window as any).ea?.fetchUrlMetadata) {
           const result = await (window as any).ea.fetchUrlMetadata(url);
-          title = result.title;
+          // Electron returns raw HTML, extract title from it
+          title = result.html ? this._extractTitle(result.html) : null;
         } else {
           // Fallback to browser fetch (subject to CORS)
           const html = await firstValueFrom(
@@ -91,12 +92,13 @@ export class UrlMetadataService {
   /**
    * Extracts the page title from HTML content.
    * Tries <title> tag first, then OpenGraph og:title.
+   * Decodes HTML entities in the extracted title.
    */
   private _extractTitle(html: string): string | null {
     // Try <title> tag
     const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
     if (titleMatch && titleMatch[1]) {
-      return titleMatch[1].trim();
+      return this._decodeHtmlEntities(titleMatch[1].trim());
     }
 
     // Try OpenGraph og:title
@@ -104,7 +106,7 @@ export class UrlMetadataService {
       /<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i,
     );
     if (ogTitleMatch && ogTitleMatch[1]) {
-      return ogTitleMatch[1].trim();
+      return this._decodeHtmlEntities(ogTitleMatch[1].trim());
     }
 
     // Try OpenGraph og:title (reversed attribute order)
@@ -112,11 +114,27 @@ export class UrlMetadataService {
       /<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i,
     );
     if (ogTitleMatch2 && ogTitleMatch2[1]) {
-      return ogTitleMatch2[1].trim();
+      return this._decodeHtmlEntities(ogTitleMatch2[1].trim());
     }
 
     return null;
   }
+
+  /**
+   * Decodes HTML entities in text using browser's native DOM API.
+   * This handles all named entities and numeric entities (&#NNN; &#xHHH;) correctly.
+   *
+   * Note: This method is used for both Electron and browser modes. Electron returns
+   * raw HTML which is then extracted and decoded here, eliminating code duplication.
+   */
+  private _decodeHtmlEntities(text: string): string {
+    // Use browser's built-in HTML entity decoder via DOM API
+    // This is much more reliable than rolling our own parser
+    const textarea = document.createElement('textarea');
+    textarea.innerHTML = text;
+    return textarea.value;
+  }
+
   /**
    * Adds entry to cache with LRU eviction policy.
    * When cache exceeds max size, removes oldest entries.
