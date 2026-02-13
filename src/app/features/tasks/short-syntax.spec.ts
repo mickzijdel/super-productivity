@@ -1643,5 +1643,58 @@ describe('shortSyntax', () => {
         expect(r?.taskChanges.timeEstimate).toBe(1800000);
       });
     });
+
+    describe('keep-title mode', () => {
+      it('should replace URL with Markdown link using basename as title', async () => {
+        const t = {
+          ...TASK,
+          title: 'Check https://example.com',
+        };
+        const r = await shortSyntax(t, { ...CONFIG, urlBehavior: 'keep-title' });
+        expect(r).toBeDefined();
+        // keep-title mode replaces URL with Markdown link: [title](url)
+        // Title is basename since metadata service is not provided
+        // For domain-only URLs, keeps full domain (e.g., example.com) for clarity
+        expect(r?.taskChanges.title).toBe('Check [example.com](https://example.com)');
+        expect(r?.attachments.length).toBe(1);
+        expect(r?.attachments[0].title).toBe('example.com');
+      });
+
+      it('should handle URL with trailing slash correctly', async () => {
+        const t = {
+          ...TASK,
+          title: 'Check https://docs.python.org/3/',
+        };
+        const r = await shortSyntax(t, { ...CONFIG, urlBehavior: 'keep-title' });
+        expect(r).toBeDefined();
+        // Should produce clean Markdown link, not malformed output
+        expect(r?.taskChanges.title).toBe('Check [3](https://docs.python.org/3/)');
+        expect(r?.attachments.length).toBe(1);
+        expect(r?.attachments[0].title).toBe('3');
+      });
+
+      it('should not double-process Markdown links if shortSyntax runs twice', async () => {
+        // First run: convert URL to Markdown
+        const t1 = {
+          ...TASK,
+          title: 'Check https://docs.python.org/3/',
+        };
+        const r1 = await shortSyntax(t1, { ...CONFIG, urlBehavior: 'keep-title' });
+        expect(r1?.taskChanges.title).toBe('Check [3](https://docs.python.org/3/)');
+
+        // Second run: process the already-processed title
+        // This simulates what might happen if shortSyntax is triggered again
+        const t2 = {
+          ...TASK,
+          title: r1!.taskChanges.title!, // 'Check [3](https://docs.python.org/3/)'
+          attachments: r1!.attachments,
+        };
+
+        const r2 = await shortSyntax(t2, { ...CONFIG, urlBehavior: 'keep-title' });
+
+        // Should return undefined (no changes needed - URL already in Markdown link)
+        expect(r2).toBeUndefined();
+      });
+    });
   });
 });

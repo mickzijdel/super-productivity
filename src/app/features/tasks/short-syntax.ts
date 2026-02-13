@@ -592,6 +592,21 @@ const parseUrlAttachments = async (
       cleanedTitle = cleanedTitle.replace(new RegExp(escapedUrl, 'g'), '');
     });
     cleanedTitle = cleanedTitle.trim().replace(/\s+/g, ' ');
+  } else if (urlBehavior === 'keep-title') {
+    // keep-title mode: Replace URLs with Markdown link syntax [title](url)
+    attachments.forEach((attachment) => {
+      const attachmentPath = attachment.path;
+      if (!attachmentPath) return;
+      // For www URLs, the path has '//' prepended, but the original doesn't
+      const originalUrl = attachmentPath.startsWith('//')
+        ? attachmentPath.substring(2)
+        : attachmentPath;
+      // Escape special regex characters for safe replacement
+      const escapedUrl = originalUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      // Replace with Markdown link syntax
+      const markdownLink = `[${attachment.title}](${attachmentPath})`;
+      cleanedTitle = cleanedTitle.replace(new RegExp(escapedUrl, 'g'), markdownLink);
+    });
   }
   // else: keep-url mode - URLs stay in title as-is
 
@@ -613,7 +628,14 @@ const _baseNameForUrl = (passedStr: string): string => {
     base = str.substring(str.lastIndexOf('/') + 1);
   }
 
-  if (base.lastIndexOf('.') !== -1) {
+  // Check if this is a domain-only URL (no path, just domain)
+  // Examples: "https://example.com" or "//example.com"
+  // In these cases, 'base' will be the domain like "example.com"
+  // We want to keep the full domain including TLD for clarity
+  const isDomainOnly = str.match(/^(?:https?:)?\/\/[^\/]+\/?$/);
+
+  // Only strip extension if this is NOT a domain-only URL
+  if (!isDomainOnly && base.lastIndexOf('.') !== -1) {
     base = base.substring(0, base.lastIndexOf('.'));
   }
   return base;
