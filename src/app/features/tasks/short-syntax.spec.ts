@@ -1642,6 +1642,31 @@ describe('shortSyntax', () => {
         expect(r?.taskChanges.tagIds).toContain('blu_id');
         expect(r?.taskChanges.timeEstimate).toBe(1800000);
       });
+
+      it('should return undefined when URL already exists as attachment (prevent infinite loop)', async () => {
+        // This is critical for preventing infinite effect loops in keep-url mode
+        const existingAttachment = {
+          id: 'existing-1',
+          type: 'LINK' as const,
+          title: 'example',
+          path: 'https://example.com',
+          icon: 'bookmark',
+        };
+
+        const t = {
+          ...TASK,
+          title: 'Check https://example.com',
+          attachments: [existingAttachment],
+        };
+
+        const r = await shortSyntax(t, { ...CONFIG, urlBehavior: 'keep-url' });
+
+        // Should return undefined because:
+        // 1. Title is unchanged (URL stays in title in keep-url mode)
+        // 2. No new attachments (URL already exists)
+        // 3. Returning a result would trigger the effect again -> infinite loop
+        expect(r).toBeUndefined();
+      });
     });
 
     describe('keep-title mode', () => {

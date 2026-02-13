@@ -658,6 +658,13 @@ const parseUrlAttachments = async (
     (attachment) => attachment.path && !existingPaths.has(attachment.path),
   );
 
+  // In keep-url mode, if all URLs already exist as attachments and title is unchanged,
+  // return hadUrls: false to prevent infinite effect loop
+  // (title stays the same, no new attachments = no actual changes)
+  if (urlBehavior === 'keep-url' && newAttachments.length === 0) {
+    return { attachments: [], title: task.title, hadUrls: false };
+  }
+
   return { attachments: newAttachments, title: cleanedTitle, hadUrls: true };
 };
 
