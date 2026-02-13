@@ -1695,6 +1695,60 @@ describe('shortSyntax', () => {
         // Should return undefined (no changes needed - URL already in Markdown link)
         expect(r2).toBeUndefined();
       });
+
+      it('should sanitize malicious page titles to prevent markdown injection', async () => {
+        // Mock a URL metadata service that returns a malicious title
+        const mockMetadataService = {
+          fetchTitle: async (_url: string, _fallback: string) => {
+            // Malicious title tries to break markdown syntax and inject a JS link
+            return '][evil](javascript:alert(1)) [';
+          },
+          clearCache: () => {},
+        } as any;
+
+        const t = {
+          ...TASK,
+          title: 'Check https://evil.com',
+        };
+
+        const r = await shortSyntax(
+          t,
+          { ...CONFIG, urlBehavior: 'keep-title' },
+          undefined,
+          undefined,
+          undefined,
+          'combine',
+          mockMetadataService,
+        );
+
+        expect(r).toBeDefined();
+        expect(r?.taskChanges.title).toBeDefined();
+
+        const title = r!.taskChanges.title!;
+
+        // The key security check: the URL in the markdown link should be safe
+        const markdownLinkPattern = /\[([^\]]+)\]\(([^)]+)\)/;
+        const matches = title.match(markdownLinkPattern);
+
+        expect(matches).toBeTruthy();
+        if (matches) {
+          // The URL (second capture group) must be the legitimate URL, not javascript:
+          expect(matches[2]).toBe('https://evil.com');
+          expect(matches[2]).not.toContain('javascript:');
+
+          // The title (first capture group) should have markdown special chars removed
+          // The original malicious title was: '][evil](javascript:alert(1)) ['
+          // After sanitization it should have all []() removed: 'eviljavascript:alert1 '
+          expect(matches[1]).not.toContain('[');
+          expect(matches[1]).not.toContain(']');
+          expect(matches[1]).not.toContain('(');
+          expect(matches[1]).not.toContain(')');
+        }
+
+        // Verify the attachment also has the sanitized title
+        expect(r?.attachments[0].title).not.toContain('[');
+        expect(r?.attachments[0].title).not.toContain(']');
+      });
     });
   });
 });

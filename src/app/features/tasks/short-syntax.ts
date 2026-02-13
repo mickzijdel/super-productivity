@@ -594,7 +594,7 @@ const parseUrlAttachments = async (
   // Fetch metadata for attachments in keep-title mode
   if (urlBehavior === 'keep-title' && urlMetadataService) {
     const attachmentsWithMetadata = await Promise.all(
-      attachments.map(async (attachment, index) => {
+      attachments.map(async (attachment) => {
         if (attachment.path && attachment.type !== 'FILE') {
           // Fetch page title with fallback to basename
           const pageTitle = await urlMetadataService.fetchTitle(
@@ -602,8 +602,13 @@ const parseUrlAttachments = async (
             attachment.title || 'Link',
           );
 
-          // Return new attachment object with updated title
-          return { ...attachment, title: pageTitle };
+          // Sanitize the title to prevent markdown injection
+          // Remove or escape characters that would break markdown link syntax: [ ] ( )
+          // This prevents malicious titles like "][evil](javascript:alert(1)) ["
+          const sanitizedTitle = _sanitizeMarkdownLinkTitle(pageTitle);
+
+          // Return new attachment object with sanitized title
+          return { ...attachment, title: sanitizedTitle };
         }
         return attachment;
       }),
@@ -654,6 +659,21 @@ const parseUrlAttachments = async (
   );
 
   return { attachments: newAttachments, title: cleanedTitle, hadUrls: true };
+};
+
+/**
+ * Sanitizes a page title to prevent markdown injection attacks.
+ * Removes characters that would break markdown link syntax: [ ] ( )
+ * This prevents malicious titles like "][evil](javascript:alert(1)) [" from
+ * creating unintended markdown links.
+ */
+const _sanitizeMarkdownLinkTitle = (title: string): string => {
+  // Remove markdown link syntax characters that could break the [title](url) format
+  // We remove these characters entirely rather than escaping them because:
+  // 1. They're unlikely to be legitimate in page titles
+  // 2. Escaping them would make the title ugly (e.g., "Title \[with\] brackets")
+  // 3. Complete removal is the safest option against injection attacks
+  return title.replace(/[\[\]()]/g, '');
 };
 
 const _baseNameForUrl = (passedStr: string): string => {

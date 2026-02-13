@@ -10,6 +10,7 @@ import {
   output,
   signal,
   viewChild,
+  SecurityContext,
 } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { T } from 'src/app/t.const';
@@ -76,6 +77,16 @@ export class TaskTitleComponent implements OnDestroy {
   readonly textarea = viewChild<ElementRef<HTMLTextAreaElement>>('textAreaElement');
 
   /**
+   * Escapes HTML special characters to prevent XSS attacks using Angular's built-in sanitizer.
+   * This is safer than rolling our own escaping function.
+   */
+  private _escapeHtml(text: string): string {
+    // Use Angular's sanitizer to escape HTML - it returns null for unsafe content
+    // which we treat as empty string. For plain text, it returns the escaped version.
+    return this._sanitizer.sanitize(SecurityContext.HTML, text) || '';
+  }
+
+  /**
    * Memoized computed signal that converts URLs and Markdown links to clickable links.
    * Only recalculates when tmpValue changes, providing optimal performance.
    * Returns SafeHtml for use with [innerHTML] in the template.
@@ -83,6 +94,9 @@ export class TaskTitleComponent implements OnDestroy {
    * Supports two formats:
    * - Direct URLs (keep-url mode): https://example.com
    * - Markdown links (keep-title mode): [Page Title](https://example.com)
+   *
+   * XSS Protection: All user-supplied content (titles and URLs) is HTML-escaped
+   * using Angular's DomSanitizer before being inserted into the generated HTML.
    */
   readonly displayHtml = computed<SafeHtml>(() => {
     const text = this.tmpValue();
@@ -113,7 +127,10 @@ export class TaskTitleComponent implements OnDestroy {
           // No protocol at all, add http://
           href = `http://${url}`;
         }
-        return `<a href="${href}" target="_blank" rel="noopener noreferrer">${title}</a>`;
+        // IMPORTANT: Escape both href and title using Angular's sanitizer to prevent XSS
+        const escapedHref = this._escapeHtml(href);
+        const escapedTitle = this._escapeHtml(title);
+        return `<a href="${escapedHref}" target="_blank" rel="noopener noreferrer">${escapedTitle}</a>`;
       });
     }
 
@@ -137,8 +154,11 @@ export class TaskTitleComponent implements OnDestroy {
           } else {
             href = `http://${cleanUrl}`;
           }
+          // IMPORTANT: Escape both href and displayed URL using Angular's sanitizer to prevent XSS
+          const escapedHref = this._escapeHtml(href);
+          const escapedDisplay = this._escapeHtml(cleanUrl);
           // Return clickable link (mousedown handler prevents edit mode for A tags)
-          return `<a href="${href}" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>`;
+          return `<a href="${escapedHref}" target="_blank" rel="noopener noreferrer">${escapedDisplay}</a>`;
         });
       }
     }
@@ -148,7 +168,8 @@ export class TaskTitleComponent implements OnDestroy {
       return text;
     }
 
-    // Use bypassSecurityTrustHtml since we constructed the HTML safely
+    // Use bypassSecurityTrustHtml since we have escaped all user-supplied content
+    // using Angular's built-in sanitizer
     return this._sanitizer.bypassSecurityTrustHtml(htmlWithLinks);
   });
 
