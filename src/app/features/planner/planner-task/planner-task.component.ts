@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
+  computed,
   HostBinding,
   HostListener,
   inject,
@@ -11,6 +12,7 @@ import {
   OnInit,
   viewChild,
 } from '@angular/core';
+import { GlobalConfigService } from '../../config/global-config.service';
 import { TaskCopy } from '../../tasks/task.model';
 import { EMPTY, Observable } from 'rxjs';
 import { TaskService } from '../../tasks/task.service';
@@ -29,6 +31,7 @@ import { MsToStringPipe } from '../../../ui/duration/ms-to-string.pipe';
 import { IssueIconPipe } from '../../issue/issue-icon/issue-icon.pipe';
 import { ShortDate2Pipe } from '../../../ui/pipes/short-date2.pipe';
 import { Log } from '../../../core/log';
+import { RenderLinksPipe } from '../../../ui/pipes/render-links.pipe';
 
 @Component({
   selector: 'planner-task',
@@ -45,12 +48,18 @@ import { Log } from '../../../core/log';
     MsToStringPipe,
     IssueIconPipe,
     ShortDate2Pipe,
+    RenderLinksPipe,
   ],
 })
 export class PlannerTaskComponent extends BaseComponent implements OnInit, OnDestroy {
   private _taskService = inject(TaskService);
   private _cd = inject(ChangeDetectorRef);
   private _projectService = inject(ProjectService);
+  private _globalConfigService = inject(GlobalConfigService);
+
+  isLinkRenderingEnabled = computed(
+    () => this._globalConfigService.cfg()?.shortSyntax?.isEnableLinkRendering ?? true,
+  );
 
   // TODO: Skipped for migration because:
   //  This input is used in a control flow expression (e.g. `@if` or `*ngIf`)
