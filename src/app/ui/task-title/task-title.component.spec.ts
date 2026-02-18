@@ -22,7 +22,7 @@ describe('TaskTitleComponent', () => {
 
   describe('readonly mode', () => {
     it('should not enter editing mode when clicked in readonly mode', () => {
-      component.readonly = true;
+      fixture.componentRef.setInput('readonly', true);
       component.tmpValue.set('Test task with https://example.com');
       fixture.detectChanges();
 
@@ -33,7 +33,7 @@ describe('TaskTitleComponent', () => {
     });
 
     it('should not allow focusInput in readonly mode', () => {
-      component.readonly = true;
+      fixture.componentRef.setInput('readonly', true);
       component.tmpValue.set('Test task');
       fixture.detectChanges();
 
@@ -43,7 +43,7 @@ describe('TaskTitleComponent', () => {
     });
 
     it('should still render links in readonly mode', () => {
-      component.readonly = true;
+      fixture.componentRef.setInput('readonly', true);
       component.tmpValue.set('Check https://example.com for details');
       fixture.detectChanges();
 
@@ -55,7 +55,7 @@ describe('TaskTitleComponent', () => {
     });
 
     it('should allow clicking links in readonly mode without entering edit mode', () => {
-      component.readonly = true;
+      fixture.componentRef.setInput('readonly', true);
       component.tmpValue.set('Visit https://example.com');
       fixture.detectChanges();
 
@@ -71,7 +71,7 @@ describe('TaskTitleComponent', () => {
     });
 
     it('should allow editing when readonly is false', () => {
-      component.readonly = false;
+      fixture.componentRef.setInput('readonly', false);
       component.tmpValue.set('Test task');
       fixture.detectChanges();
 
@@ -87,7 +87,7 @@ describe('TaskTitleComponent', () => {
     });
 
     it('should not stop mousedown propagation in readonly mode (allows drag)', () => {
-      component.readonly = true;
+      fixture.componentRef.setInput('readonly', true);
       component.tmpValue.set('Test task');
       fixture.detectChanges();
 
@@ -104,7 +104,7 @@ describe('TaskTitleComponent', () => {
     });
 
     it('should stop mousedown propagation when entering edit mode', () => {
-      component.readonly = false;
+      fixture.componentRef.setInput('readonly', false);
       component.tmpValue.set('Test task');
       fixture.detectChanges();
 

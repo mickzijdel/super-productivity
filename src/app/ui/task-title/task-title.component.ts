@@ -31,13 +31,13 @@ import { RenderLinksPipe } from '../pipes/render-links.pipe';
   host: {
     ['[class.is-focused]']: 'isFocused()',
     ['[class.is-editing]']: 'isEditing()',
-    ['[class.is-readonly]']: 'readonly',
+    ['[class.is-readonly]']: 'readonly()',
   },
 })
 export class TaskTitleComponent implements OnDestroy {
   T: typeof T = T;
 
-  @Input() readonly = false; // When true, disables editing and only displays the value
+  readonly readonly = input<boolean>(false); // When true, disables editing and only displays the value
   readonly renderLinks = input<boolean>(true); // When true, renders URLs and markdown as clickable links
 
   // Reset value only if user is not currently editing (prevents overwriting edits during sync)
@@ -106,7 +106,7 @@ export class TaskTitleComponent implements OnDestroy {
     const target = event.target as HTMLElement | null;
     // Don't enter edit mode if readonly, clicking a link, or clicking textarea
     if (
-      this.readonly ||
+      this.readonly() ||
       event.button !== 0 ||
       target?.tagName === 'TEXTAREA' ||
       target?.tagName === 'A'
@@ -132,7 +132,7 @@ export class TaskTitleComponent implements OnDestroy {
   }
 
   focusInput(): void {
-    if (this.readonly) {
+    if (this.readonly()) {
       return; // Don't allow focusing in readonly mode
     }
     this._isEditing.set(true);
