@@ -55,7 +55,7 @@ const FIVE_MINUTES_IN_MS = 5 * 60 * 1000;
     '[style]': 'style()',
     '[style.--project-color]': 'projectColor()',
     '[style.height]': '_resizeHeight()',
-    '(click)': 'clickHandler()',
+    '(click)': 'clickHandler($event)',
     '(contextmenu)': 'onContextMenu($event)',
   },
   /* eslint-enable @typescript-eslint/naming-convention */
@@ -262,7 +262,11 @@ export class ScheduleEventComponent {
     return 'SPLIT_CONTINUE';
   });
 
-  async clickHandler(): Promise<void> {
+  async clickHandler(event: MouseEvent): Promise<void> {
+    const target = event.target as HTMLElement | null;
+    if (target?.tagName === 'A' || target?.closest('a')) {
+      return; // Let link clicks propagate without opening the schedule event panel
+    }
     // Prevent opening dialog when resizing or just finished resizing
     if (this._isResizing() || this._justFinishedResizing()) {
       return;

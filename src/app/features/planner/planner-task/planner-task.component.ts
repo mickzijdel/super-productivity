@@ -89,8 +89,12 @@ export class PlannerTaskComponent extends BaseComponent implements OnInit, OnDes
     return this.task.id === this._taskService.currentTaskId();
   }
 
-  @HostListener('click')
-  async clickHandler(): Promise<void> {
+  @HostListener('click', ['$event'])
+  async clickHandler(event: MouseEvent): Promise<void> {
+    const target = event.target as HTMLElement | null;
+    if (target?.tagName === 'A' || target?.closest('a')) {
+      return; // Let link clicks propagate without opening the task panel
+    }
     if (this.task) {
       // Use bottom panel on mobile, dialog on desktop
       this._taskService.setSelectedId(this.task.id);
