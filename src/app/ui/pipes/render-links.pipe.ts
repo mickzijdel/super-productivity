@@ -26,8 +26,6 @@ export class RenderLinksPipe implements PipeTransform {
     if (!text) {
       return '';
     }
-
-    // When link rendering is disabled, return escaped plain text as SafeHtml
     if (!renderLinks) {
       return this._sanitizer.bypassSecurityTrustHtml(this._escapeHtml(text));
     }
@@ -39,74 +37,85 @@ export class RenderLinksPipe implements PipeTransform {
       return this._sanitizer.bypassSecurityTrustHtml(this._escapeHtml(text));
     }
 
-    let htmlWithLinks = text;
-    let hasMarkdown = false;
-    let hasUrls = false;
+    return this._sanitizer.bypassSecurityTrustHtml(this._buildLinksHtml(text));
+  }
 
-    // First, handle markdown links: [title](url)
+  /**
+   * Single-pass link rendering: collects all markdown-link and plain-URL
+   * matches sorted by position, then walks the string once, HTML-escaping
+   * every text segment and converting each match into an anchor tag.
+   * This guarantees no raw user content reaches innerHTML.
+   */
+  private _buildLinksHtml(text: string): string {
+    type Match = {
+      index: number;
+      end: number;
+      isMarkdown: boolean;
+      title: string;
+      url: string;
+    };
+
+    const matches: Match[] = [];
+
+    // Collect markdown links
     MARKDOWN_LINK_REGEX.lastIndex = 0;
-    hasMarkdown = MARKDOWN_LINK_REGEX.test(text);
-    if (hasMarkdown) {
-      MARKDOWN_LINK_REGEX.lastIndex = 0;
-      htmlWithLinks = htmlWithLinks.replace(MARKDOWN_LINK_REGEX, (_match, title, url) => {
-        if (!this._isUrlSchemeSafe(url)) {
-          return this._escapeHtml(title);
-        }
-        const href = this._normalizeHref(url);
-        const escapedHref = this._escapeHtml(href);
-        const escapedTitle = this._escapeHtml(title);
-        return `<a href="${escapedHref}" target="_blank" rel="noopener noreferrer">${escapedTitle}</a>`;
+    let m: RegExpExecArray | null;
+    while ((m = MARKDOWN_LINK_REGEX.exec(text)) !== null) {
+      matches.push({
+        index: m.index,
+        end: m.index + m[0].length,
+        isMarkdown: true,
+        title: m[1],
+        url: m[2],
       });
     }
 
-    // Then, handle plain URLs (avoiding re-processing existing <a> tags)
+    // Collect plain URLs not covered by a markdown match
     URL_REGEX.lastIndex = 0;
-    hasUrls = URL_REGEX.test(htmlWithLinks);
-    if (hasUrls) {
-      const anchorRegex = /<a\b[^>]*>.*?<\/a>/gs;
-      const parts: Array<{ text: string; isAnchor: boolean }> = [];
-      let lastIndex = 0;
-      let anchorMatch: RegExpExecArray | null;
-
-      while ((anchorMatch = anchorRegex.exec(htmlWithLinks)) !== null) {
-        if (anchorMatch.index > lastIndex) {
-          parts.push({
-            text: htmlWithLinks.slice(lastIndex, anchorMatch.index),
-            isAnchor: false,
-          });
-        }
-        parts.push({ text: anchorMatch[0], isAnchor: true });
-        lastIndex = anchorRegex.lastIndex;
+    while ((m = URL_REGEX.exec(text)) !== null) {
+      const start = m.index;
+      if (!matches.some((x) => start >= x.index && start < x.end)) {
+        const raw = m[0];
+        const cleanUrl = raw.replace(/[.,;!?]+$/, '');
+        matches.push({
+          index: start,
+          end: start + raw.length,
+          isMarkdown: false,
+          title: cleanUrl,
+          url: cleanUrl,
+        });
       }
-      if (lastIndex < htmlWithLinks.length) {
-        parts.push({ text: htmlWithLinks.slice(lastIndex), isAnchor: false });
-      }
-
-      htmlWithLinks = parts
-        .map((part) => {
-          if (part.isAnchor) {
-            return part.text;
-          }
-          URL_REGEX.lastIndex = 0;
-          return part.text.replace(URL_REGEX, (url) => {
-            const cleanUrl = url.replace(/[.,;!?]+$/, '');
-            if (!this._isUrlSchemeSafe(cleanUrl)) {
-              return this._escapeHtml(cleanUrl);
-            }
-            const href = this._normalizeHref(cleanUrl);
-            const escapedHref = this._escapeHtml(href);
-            const escapedDisplay = this._escapeHtml(cleanUrl);
-            return `<a href="${escapedHref}" target="_blank" rel="noopener noreferrer">${escapedDisplay}</a>`;
-          });
-        })
-        .join('');
     }
 
-    if (!hasMarkdown && !hasUrls) {
-      return this._sanitizer.bypassSecurityTrustHtml(this._escapeHtml(text));
+    if (matches.length === 0) {
+      return this._escapeHtml(text);
     }
 
-    return this._sanitizer.bypassSecurityTrustHtml(htmlWithLinks);
+    matches.sort((a, b) => a.index - b.index);
+
+    const out: string[] = [];
+    let cursor = 0;
+
+    for (const match of matches) {
+      // Escape the plain-text segment before this match
+      out.push(this._escapeHtml(text.slice(cursor, match.index)));
+
+      if (!this._isUrlSchemeSafe(match.url)) {
+        // Unsafe URL: render title text only (escaped, no anchor)
+        out.push(this._escapeHtml(match.title));
+      } else {
+        const href = this._normalizeHref(match.url);
+        out.push(
+          `<a href="${this._escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${this._escapeHtml(match.title)}</a>`,
+        );
+      }
+
+      cursor = match.end;
+    }
+
+    // Escape any remaining text after the last match
+    out.push(this._escapeHtml(text.slice(cursor)));
+    return out.join('');
   }
 
   private _escapeHtml(text: string): string {
