@@ -6,7 +6,9 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 const URL_REGEX = /(?:(?:https?|file):\/\/\S{1,2000}(?=\s|$)|www\.\S{1,2000}(?=\s|$))/gi;
 
 // Markdown link regex: [title](url)
-const MARKDOWN_LINK_REGEX = /\[([^\]]+)\]\(([^)]+)\)/g;
+// The URL group allows one level of balanced parentheses so that links like
+// https://en.wikipedia.org/wiki/C_(programming_language) are captured whole.
+const MARKDOWN_LINK_REGEX = /\[([^\]]+)\]\(((?:[^()]*|\([^()]*\))*)\)/g;
 
 /**
  * Pipe that renders URLs and markdown links as clickable <a> tags.
@@ -76,10 +78,12 @@ export class RenderLinksPipe implements PipeTransform {
       const start = m.index;
       if (!matches.some((x) => start >= x.index && start < x.end)) {
         const raw = m[0];
-        const cleanUrl = raw.replace(/[.,;!?]+$/, '');
+        const cleanUrl = this._stripUrlTrailing(raw);
         matches.push({
           index: start,
-          end: start + raw.length,
+          // Advance cursor only past cleanUrl so stripped trailing chars
+          // (e.g. the ) in "visit (https://example.com)") remain as text.
+          end: start + cleanUrl.length,
           isMarkdown: false,
           title: cleanUrl,
           url: cleanUrl,
@@ -116,6 +120,22 @@ export class RenderLinksPipe implements PipeTransform {
     // Escape any remaining text after the last match
     out.push(this._escapeHtml(text.slice(cursor)));
     return out.join('');
+  }
+
+  /** Strip trailing punctuation and unmatched closing parentheses from a URL. */
+  private _stripUrlTrailing(raw: string): string {
+    let url = raw.replace(/[.,;!?]+$/, '');
+    // Strip trailing ) only when they exceed the number of opening (
+    while (url.endsWith(')')) {
+      const opens = (url.match(/\(/g) || []).length;
+      const closes = (url.match(/\)/g) || []).length;
+      if (closes > opens) {
+        url = url.slice(0, -1);
+      } else {
+        break;
+      }
+    }
+    return url;
   }
 
   private _escapeHtml(text: string): string {

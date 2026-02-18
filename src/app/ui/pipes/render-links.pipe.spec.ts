@@ -48,7 +48,11 @@ describe('RenderLinksPipe', () => {
         pipe.transform('Task [link](https://evil.com/"onmouseover="alert(1))', true),
       );
       expect(result).toContain('&quot;onmouseover=&quot;');
-      expect(result).toContain('href="https://evil.com/&quot;onmouseover=&quot;alert(1"');
+      // The balanced (1) is included in the captured URL (regex supports one level
+      // of balanced parens), so the href ends with alert(1) — still safely escaped.
+      expect(result).toContain(
+        'href="https://evil.com/&quot;onmouseover=&quot;alert(1)"',
+      );
     });
 
     it('should escape ampersands in URLs', () => {
@@ -136,6 +140,55 @@ describe('RenderLinksPipe', () => {
       const result = html(pipe.transform('Check https://example.com', false));
       expect(result).not.toContain('<a ');
       expect(result).toContain('https://example.com');
+    });
+  });
+
+  describe('URL parsing: parentheses in markdown links', () => {
+    it('should capture a Wikipedia-style URL with balanced parens', () => {
+      const result = html(
+        pipe.transform(
+          '[C language](https://en.wikipedia.org/wiki/C_(programming_language))',
+          true,
+        ),
+      );
+      expect(result).toContain(
+        'href="https://en.wikipedia.org/wiki/C_(programming_language)"',
+      );
+      expect((result.match(/<a /g) || []).length).toBe(1);
+    });
+
+    it('should not truncate plain URLs with balanced parens', () => {
+      const result = html(
+        pipe.transform(
+          'See https://en.wikipedia.org/wiki/C_(programming_language) here',
+          true,
+        ),
+      );
+      expect(result).toContain(
+        'href="https://en.wikipedia.org/wiki/C_(programming_language)"',
+      );
+    });
+  });
+
+  describe('URL parsing: trailing ) stripping', () => {
+    it('should strip a trailing ) when the URL is written in parentheses', () => {
+      const result = html(pipe.transform('Visit (https://example.com) for info', true));
+      expect(result).toContain('href="https://example.com"');
+      expect(result).not.toContain('href="https://example.com)"');
+      // The closing ) of the sentence should appear as text
+      expect(result).toContain(') for info');
+    });
+
+    it('should not strip ) when it belongs to the URL (balanced parens)', () => {
+      const result = html(
+        pipe.transform(
+          'See https://en.wikipedia.org/wiki/C_(programming_language) here',
+          true,
+        ),
+      );
+      expect(result).toContain(
+        'href="https://en.wikipedia.org/wiki/C_(programming_language)"',
+      );
     });
   });
 
