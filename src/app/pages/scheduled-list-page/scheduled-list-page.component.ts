@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { GlobalConfigService } from '../../features/config/global-config.service';
 import { T } from '../../t.const';
 import { MatDialog } from '@angular/material/dialog';
@@ -66,9 +66,7 @@ export class ScheduledListPageComponent {
   private _dateTimeFormatService = inject(DateTimeFormatService);
   private _globalConfigService = inject(GlobalConfigService);
 
-  isLinkRenderingEnabled = computed(
-    () => this._globalConfigService.cfg()?.shortSyntax?.isEnableLinkRendering ?? true,
-  );
+  readonly isLinkRenderingEnabled = this._globalConfigService.isLinkRenderingEnabled;
 
   T: typeof T = T;
   TODAY_TAG: Tag = TODAY_TAG;

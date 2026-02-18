@@ -76,9 +76,7 @@ export class ScheduleEventComponent {
   private _taskService = inject(TaskService);
   private _globalConfigService = inject(GlobalConfigService);
 
-  readonly isLinkRenderingEnabled = computed(
-    () => this._globalConfigService.cfg()?.shortSyntax?.isEnableLinkRendering ?? true,
-  );
+  readonly isLinkRenderingEnabled = this._globalConfigService.isLinkRenderingEnabled;
 
   readonly T: typeof T = T;
   readonly isDragPreview = input<boolean>(false);

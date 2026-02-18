@@ -2,7 +2,6 @@ import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
-  computed,
   HostBinding,
   HostListener,
   inject,
@@ -57,9 +56,7 @@ export class PlannerTaskComponent extends BaseComponent implements OnInit, OnDes
   private _projectService = inject(ProjectService);
   private _globalConfigService = inject(GlobalConfigService);
 
-  isLinkRenderingEnabled = computed(
-    () => this._globalConfigService.cfg()?.shortSyntax?.isEnableLinkRendering ?? true,
-  );
+  readonly isLinkRenderingEnabled = this._globalConfigService.isLinkRenderingEnabled;
 
   // TODO: Skipped for migration because:
   //  This input is used in a control flow expression (e.g. `@if` or `*ngIf`)
