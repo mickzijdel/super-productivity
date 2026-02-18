@@ -1,0 +1,162 @@
+import { TestBed } from '@angular/core/testing';
+import { SafeHtml } from '@angular/platform-browser';
+import { RenderLinksPipe } from './render-links.pipe';
+
+/** Extract the raw HTML string from a SafeHtml returned by the pipe. */
+const html = (result: SafeHtml | string): string => {
+  if (typeof result === 'string') return result;
+  return (result as any).changingThisBreaksApplicationSecurity as string;
+};
+
+describe('RenderLinksPipe', () => {
+  let pipe: RenderLinksPipe;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({ providers: [RenderLinksPipe] });
+    pipe = TestBed.inject(RenderLinksPipe);
+  });
+
+  describe('XSS Protection', () => {
+    it('should HTML-escape content in markdown link titles, preventing XSS', () => {
+      const result = html(
+        pipe.transform('Task [<img src=x onerror=alert(1)>](https://example.com)', true),
+      );
+      expect(result).not.toContain('<img');
+      expect(result).toContain('&lt;img');
+    });
+
+    it('should HTML-escape raw HTML tags surrounding a URL', () => {
+      const result = html(
+        pipe.transform('<img src=x onerror=alert(1)> see https://example.com', true),
+      );
+      expect(result).not.toContain('<img src=x');
+      expect(result).toContain('&lt;img src=x');
+      expect(result).toContain('href="https://example.com"');
+    });
+
+    it('should HTML-escape script tags in plain URL display text', () => {
+      const result = html(
+        pipe.transform('Task https://evil.com/<script>alert(1)</script>', true),
+      );
+      expect(result).not.toContain('<script>');
+      expect(result).toContain('&lt;script&gt;');
+      expect(result).toContain('https://evil.com/');
+    });
+
+    it('should escape quote characters in href attributes to prevent attribute breakout', () => {
+      const result = html(
+        pipe.transform('Task [link](https://evil.com/"onmouseover="alert(1))', true),
+      );
+      expect(result).toContain('&quot;onmouseover=&quot;');
+      expect(result).toContain('href="https://evil.com/&quot;onmouseover=&quot;alert(1"');
+    });
+
+    it('should escape ampersands in URLs', () => {
+      const result = html(pipe.transform('Task https://example.com?a=1&b=2', true));
+      expect(result).toContain('&amp;');
+    });
+
+    it('should return plain text (no anchor tags) when no URLs are present', () => {
+      const result = html(pipe.transform('Just plain text task', true));
+      expect(result).not.toContain('<a ');
+    });
+
+    it('should explicitly reject javascript: URLs in markdown links', () => {
+      const result = html(pipe.transform('[Click](javascript:alert(1))', true));
+      expect(result).not.toContain('javascript:');
+      expect(result).not.toContain('<a ');
+    });
+
+    it('should explicitly reject data: URLs', () => {
+      const result = html(
+        pipe.transform('[Click](data:text/html,<script>alert(1)</script>)', true),
+      );
+      expect(result).not.toContain('data:');
+      expect(result).not.toContain('<a ');
+    });
+
+    it('should explicitly reject vbscript: URLs', () => {
+      const result = html(pipe.transform('[Click](vbscript:msgbox(1))', true));
+      expect(result).not.toContain('vbscript:');
+      expect(result).not.toContain('<a ');
+    });
+
+    it('should allow safe protocols (http, https, file)', () => {
+      const result = html(
+        pipe.transform(
+          '[HTTP](http://example.com) [HTTPS](https://example.com) [FILE](file:///path)',
+          true,
+        ),
+      );
+      expect(result).toContain('http://example.com');
+      expect(result).toContain('https://example.com');
+      expect(result).toContain('file:///path');
+      expect((result.match(/<a /g) || []).length).toBe(3);
+    });
+  });
+
+  describe('Mixed Content', () => {
+    it('should render both markdown links and plain URLs in the same title', () => {
+      const result = html(
+        pipe.transform('Review [docs](https://docs.com) and https://example.com', true),
+      );
+      expect(result).toContain('href="https://docs.com"');
+      expect(result).toContain('>docs</a>');
+      expect(result).toContain('href="https://example.com"');
+      expect(result).toContain('>https://example.com</a>');
+      expect((result.match(/<a /g) || []).length).toBe(2);
+    });
+
+    it('should not double-process URLs that are already in markdown links', () => {
+      const result = html(
+        pipe.transform('[https://example.com](https://example.com)', true),
+      );
+      expect((result.match(/<a /g) || []).length).toBe(1);
+      expect(result).toContain('href="https://example.com"');
+      expect(result).toContain('>https://example.com</a>');
+    });
+
+    it('should handle multiple markdown links and multiple plain URLs', () => {
+      const result = html(
+        pipe.transform(
+          'Check [docs](https://docs.com) and [api](https://api.com), also see https://example.com and https://github.com',
+          true,
+        ),
+      );
+      expect((result.match(/<a /g) || []).length).toBe(4);
+      expect(result).toContain('href="https://docs.com"');
+      expect(result).toContain('href="https://api.com"');
+      expect(result).toContain('href="https://example.com"');
+      expect(result).toContain('href="https://github.com"');
+    });
+  });
+
+  describe('renderLinks=false', () => {
+    it('should return escaped plain text without anchor tags', () => {
+      const result = html(pipe.transform('Check https://example.com', false));
+      expect(result).not.toContain('<a ');
+      expect(result).toContain('https://example.com');
+    });
+  });
+
+  describe('ReDoS protection', () => {
+    it('should handle extremely long URLs without performance degradation', () => {
+      const prefix = 'https://example.com/';
+      const longUrl = `${prefix}${'a'.repeat(1990 - prefix.length)}`;
+
+      const startTime = performance.now();
+      const result = html(pipe.transform(`Check ${longUrl} for details`, true));
+
+      expect(performance.now() - startTime).toBeLessThan(100);
+      expect(result).toContain('href=');
+    });
+
+    it('should handle URLs at exactly 2000 characters', () => {
+      const prefix = 'https://example.com/';
+      const longUrl = `${prefix}${'a'.repeat(2000 - prefix.length)}`;
+      const result = html(pipe.transform(longUrl, true));
+      expect(result).toContain('href=');
+      expect(result).toContain(longUrl);
+    });
+  });
+});
