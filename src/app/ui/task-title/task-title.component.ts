@@ -76,6 +76,11 @@ export class TaskTitleComponent implements OnDestroy {
    * Fast pre-check: does the title contain URL or markdown hints?
    * Used to choose between innerHTML (pipe handles link rendering) and plain text interpolation.
    * False positives (e.g. text with "://" but no valid URL) are handled gracefully by the pipe.
+   *
+   * NOTE: The hint strings ('://', 'www.', '](') intentionally mirror the pre-check inside
+   * RenderLinksPipe.transform(). This duplication is deliberate: it avoids calling the pipe
+   * at all for plain-text tasks (the common case). If the pipe's pre-check hints ever change,
+   * update this computed signal to match.
    */
   readonly hasUrlsOrMarkdown = computed<boolean>(() => {
     if (!this.renderLinks()) {
