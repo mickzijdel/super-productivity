@@ -1,8 +1,10 @@
 import { inject, Pipe, PipeTransform } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 
-// URL regex matching URLs with protocol (http, https, file) or www prefix
-// Limit URL length to 2000 chars to prevent ReDoS attacks
+// URL regex matching URLs with protocol (http, https, file) or www prefix.
+// ftp://, ssh://, blob:, etc. are intentionally excluded — they are either
+// non-browsable or handled by _isUrlSchemeSafe's denylist for markdown links.
+// Limit URL length to 2000 chars to prevent ReDoS attacks.
 const URL_REGEX = /(?:(?:https?|file):\/\/\S{1,2000}(?=\s|$)|www\.\S{1,2000}(?=\s|$))/gi;
 
 // Markdown link regex: [title](url)
@@ -141,15 +143,13 @@ export class RenderLinksPipe implements PipeTransform {
   /** Strip trailing punctuation and unmatched closing parentheses from a URL. */
   private _stripUrlTrailing(raw: string): string {
     let url = raw.replace(/[.,;!?]+$/, '');
-    // Strip trailing ) only when they exceed the number of opening (
-    while (url.endsWith(')')) {
-      const opens = (url.match(/\(/g) || []).length;
-      const closes = (url.match(/\)/g) || []).length;
-      if (closes > opens) {
-        url = url.slice(0, -1);
-      } else {
-        break;
-      }
+    // Strip trailing ) only when they exceed the number of opening (.
+    // opens is constant during the loop, so we count it once outside.
+    const opens = (url.match(/\(/g) || []).length;
+    let closes = (url.match(/\)/g) || []).length;
+    while (url.endsWith(')') && closes > opens) {
+      url = url.slice(0, -1);
+      closes--;
     }
     return url;
   }

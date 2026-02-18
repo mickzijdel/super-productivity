@@ -210,6 +210,40 @@ describe('RenderLinksPipe', () => {
     });
   });
 
+  describe('URL scheme allowlist', () => {
+    it('should render ftp:// markdown link as plain title text, not a link', () => {
+      // ftp:// is intentionally excluded from the safe-scheme allowlist.
+      // The title text should appear but without an anchor.
+      const result = html(
+        pipe.transform('[My FTP server](ftp://files.example.com)', true),
+      );
+      expect(result).toContain('My FTP server');
+      expect(result).not.toContain('<a ');
+      expect(result).not.toContain('href=');
+    });
+
+    it('should render ssh:// markdown link as plain title text, not a link', () => {
+      const result = html(pipe.transform('[SSH](ssh://server.example.com)', true));
+      expect(result).toContain('SSH');
+      expect(result).not.toContain('<a ');
+    });
+  });
+
+  describe('URL parsing: trailing punctuation stripping', () => {
+    it('should strip a trailing comma from an auto-detected URL', () => {
+      const result = html(pipe.transform('See https://example.com, for details', true));
+      expect(result).toContain('href="https://example.com"');
+      expect(result).not.toContain('href="https://example.com,"');
+      expect(result).toContain(', for details');
+    });
+
+    it('should strip a trailing period from an auto-detected URL', () => {
+      const result = html(pipe.transform('Go to https://example.com.', true));
+      expect(result).toContain('href="https://example.com"');
+      expect(result).not.toContain('href="https://example.com."');
+    });
+  });
+
   describe('ReDoS protection', () => {
     it('should handle extremely long URLs without performance degradation', () => {
       const prefix = 'https://example.com/';
